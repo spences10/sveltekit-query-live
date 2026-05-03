@@ -1,7 +1,7 @@
 # SvelteKit `query.live` Wikimedia demo
 
 A small SvelteKit app demonstrating experimental remote functions with
-`query.live`.
+[`query.live`](https://svelte.dev/docs/kit/remote-functions#query.live).
 
 The page streams Wikimedia RecentChanges from
 `https://stream.wikimedia.org/v2/stream/recentchange` on the server,
@@ -12,7 +12,8 @@ so the stream can run without growing the page forever.
 
 ## What it shows
 
-- `query.live` in `src/routes/wikimedia.remote.ts`
+- [`query.live`](https://svelte.dev/docs/kit/remote-functions#query.live)
+  in `src/routes/wikimedia.remote.ts`
 - Remote functions enabled in `svelte.config.js`
 - Top-level `await` in `src/routes/+page.svelte`
 - Server-side stream cleanup via `AbortController` and reader
