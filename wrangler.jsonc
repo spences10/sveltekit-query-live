@@ -10,4 +10,10 @@
 	},
 	"workers_dev": true,
 	"preview_urls": true,
+	"routes": [
+		{
+			"pattern": "sveltekit-query-live.ss10.dev",
+			"custom_domain": true,
+		},
+	],
 }
