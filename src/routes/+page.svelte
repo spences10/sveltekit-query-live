@@ -1,12 +1,12 @@
 <script lang="ts">
 	import {
 		stream_recent_changes,
-		type StreamPace,
-		type WikiSnapshot,
+		type stream_pace,
+		type wiki_snapshot,
 	} from './wikimedia.remote';
 
 	let running = $state(true);
-	let pace = $state<StreamPace>('live');
+	let pace = $state<stream_pace>('live');
 
 	const feed = $derived(
 		running ? stream_recent_changes({ pace }) : null,
@@ -34,7 +34,7 @@
 		return type;
 	}
 
-	function stopped_snapshot(): WikiSnapshot {
+	function stopped_snapshot(): wiki_snapshot {
 		return {
 			status: 'ended',
 			message:

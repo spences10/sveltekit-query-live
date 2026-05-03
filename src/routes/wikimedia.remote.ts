@@ -1,14 +1,16 @@
 import { query } from '$app/server';
 
-const EVENT_STREAM =
+const event_stream =
 	'https://stream.wikimedia.org/v2/stream/recentchange';
-const MAX_CHANGES = 24;
-const PACE_INTERVAL_MS = {
+const stream_user_agent =
+	'sveltekit-query-live/1.0 (https://github.com/spences10/sveltekit-query-live)';
+const max_changes = 24;
+const pace_interval_ms = {
 	live: 350,
 	slow: 1800,
 } as const;
 
-type RawRecentChange = {
+type raw_recent_change = {
 	id?: number | string;
 	type?: string;
 	title?: string;
@@ -29,13 +31,13 @@ type RawRecentChange = {
 	};
 };
 
-export type StreamPace = keyof typeof PACE_INTERVAL_MS;
+export type stream_pace = keyof typeof pace_interval_ms;
 
 export type wiki_stream_options = {
-	pace?: StreamPace;
+	pace?: stream_pace;
 };
 
-export type WikiChange = {
+export type wiki_change = {
 	id: string;
 	type: string;
 	title: string;
@@ -50,11 +52,11 @@ export type WikiChange = {
 	byte_delta: number;
 };
 
-export type WikiSnapshot = {
+export type wiki_snapshot = {
 	status: 'connecting' | 'live' | 'ended' | 'error';
 	message: string;
 	updated_at: number;
-	changes: WikiChange[];
+	changes: wiki_change[];
 	stats: {
 		total: number;
 		humans: number;
@@ -70,7 +72,7 @@ export const stream_recent_changes = query.live(
 	'unchecked',
 	async function* (options: wiki_stream_options = {}) {
 		const { pace, min_yield_interval } = normalize_options(options);
-		const changes: WikiChange[] = [];
+		const changes: wiki_change[] = [];
 		const stats = {
 			total: 0,
 			humans: 0,
@@ -82,9 +84,9 @@ export const stream_recent_changes = query.live(
 		};
 
 		const snapshot = (
-			status: WikiSnapshot['status'],
+			status: wiki_snapshot['status'],
 			message = '',
-		): WikiSnapshot => ({
+		): wiki_snapshot => ({
 			status,
 			message,
 			updated_at: Date.now(),
@@ -103,8 +105,12 @@ export const stream_recent_changes = query.live(
 		const controller = new AbortController();
 
 		try {
-			const response = await fetch(EVENT_STREAM, {
-				headers: { accept: 'text/event-stream' },
+			const response = await fetch(event_stream, {
+				headers: {
+					accept: 'text/event-stream',
+					'api-user-agent': stream_user_agent,
+					'user-agent': stream_user_agent,
+				},
 				signal: controller.signal,
 			});
 
@@ -143,7 +149,7 @@ export const stream_recent_changes = query.live(
 					else if (change.type === 'log') stats.log_events += 1;
 
 					changes.unshift(change);
-					changes.splice(MAX_CHANGES);
+					changes.splice(max_changes);
 
 					const now = Date.now();
 					if (now - last_yield > min_yield_interval) {
@@ -170,10 +176,10 @@ export const stream_recent_changes = query.live(
 
 function normalize_options(options: wiki_stream_options) {
 	const pace = options.pace === 'slow' ? 'slow' : 'live';
-	return { pace, min_yield_interval: PACE_INTERVAL_MS[pace] };
+	return { pace, min_yield_interval: pace_interval_ms[pace] };
 }
 
-function parse_event(event: string): WikiChange | null {
+function parse_event(event: string): wiki_change | null {
 	const data = event
 		.split(/\r?\n/)
 		.filter((line) => line.startsWith('data:'))
@@ -183,13 +189,13 @@ function parse_event(event: string): WikiChange | null {
 	if (!data) return null;
 
 	try {
-		return to_change(JSON.parse(data) as RawRecentChange);
+		return to_change(JSON.parse(data) as raw_recent_change);
 	} catch {
 		return null;
 	}
 }
 
-function to_change(raw: RawRecentChange): WikiChange {
+function to_change(raw: raw_recent_change): wiki_change {
 	const title = raw.title ?? 'Untitled page';
 	const domain = raw.meta?.domain ?? raw.wiki ?? 'wikipedia.org';
 	const server_url = raw.server_url ?? `https://${domain}`;
