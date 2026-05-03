@@ -5,17 +5,18 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "wrangler types --check && vite build",
+		"clean:worker-types": "node -e \"const fs = require('node:fs'); for (const p of ['.svelte-kit/cloudflare', '.svelte-kit/cloudflare-tmp']) fs.rmSync(p, { recursive: true, force: true })\"",
+		"build": "pnpm run clean:worker-types && wrangler types --check && vite build",
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
 		"prepare": "svelte-kit sync || echo ''",
-		"check": "wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check": "pnpm run clean:worker-types && wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright install && playwright test",
-		"gen": "wrangler types"
+		"gen": "pnpm run clean:worker-types && wrangler types"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.5",

@@ -1,48 +1,57 @@
-# sv
+# SvelteKit `query.live` Wikimedia demo
 
-Everything you need to build a Svelte project, powered by
-[`sv`](https://github.com/sveltejs/cli).
+A small SvelteKit app demonstrating experimental remote functions with
+`query.live`.
 
-## Creating a project
+The page streams Wikimedia RecentChanges from
+`https://stream.wikimedia.org/v2/stream/recentchange` on the server,
+converts the SSE feed into an async generator, and renders live
+Wikipedia edits in the browser. It includes live/slow-mo pacing,
+start/stop controls, reconnect handling, and bounded in-memory state
+so the stream can run without growing the page forever.
 
-If you're seeing this, you've probably already done this step.
-Congrats!
+## What it shows
 
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-pnpm dlx sv@0.15.2 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright tailwindcss="plugins:none" sveltekit-adapter="adapter:cloudflare+cfTarget:workers" --install pnpm sveltekit-query-live
-```
+- `query.live` in `src/routes/wikimedia.remote.ts`
+- Remote functions enabled in `svelte.config.js`
+- Top-level `await` in `src/routes/+page.svelte`
+- Server-side stream cleanup via `AbortController` and reader
+  cancellation
+- Cloudflare Workers adapter setup
 
 ## Developing
 
-Once you've created a project and installed dependencies with
-`npm install` (or `pnpm install` or `yarn`), start a development
-server:
-
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+pnpm install
+pnpm dev
 ```
 
-## Building
-
-To create a production version of your app:
+## Validation
 
 ```sh
-npm run build
+pnpm lint
+pnpm check
+pnpm build
 ```
 
-You can preview the production build with `npm run preview`.
+## Notes
 
-> To deploy your app, you may need to install an
-> [adapter](https://svelte.dev/docs/kit/adapters) for your target
-> environment.
+Remote functions and Svelte async rendering are experimental, so this
+project opts into:
+
+```js
+compilerOptions: {
+	experimental: {
+		async: true;
+	}
+}
+kit: {
+	experimental: {
+		remoteFunctions: true;
+	}
+}
+```
+
+Wrangler type checks are run before check/build; the scripts clean
+generated Cloudflare output first so `worker-configuration.d.ts` stays
+stable.
