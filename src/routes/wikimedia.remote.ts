@@ -1,11 +1,13 @@
 import { query } from '$app/server';
 
-const event_stream =
+const EVENT_STREAM =
 	'https://stream.wikimedia.org/v2/stream/recentchange';
-const stream_user_agent =
+const STREAM_USER_AGENT =
 	'sveltekit-query-live/1.0 (https://github.com/spences10/sveltekit-query-live)';
-const max_changes = 24;
-const pace_interval_ms = {
+const MAX_CHANGES = 24;
+const RECONNECT_DELAY_MS = 2_000;
+const MAX_RECONNECT_DELAY_MS = 15_000;
+const PACE_INTERVAL_MS = {
 	live: 350,
 	slow: 1800,
 } as const;
@@ -31,7 +33,7 @@ type raw_recent_change = {
 	};
 };
 
-export type stream_pace = keyof typeof pace_interval_ms;
+export type stream_pace = keyof typeof PACE_INTERVAL_MS;
 
 export type wiki_stream_options = {
 	pace?: stream_pace;
@@ -53,7 +55,7 @@ export type wiki_change = {
 };
 
 export type wiki_snapshot = {
-	status: 'connecting' | 'live' | 'ended' | 'error';
+	status: 'connecting' | 'live' | 'reconnecting' | 'ended' | 'error';
 	message: string;
 	updated_at: number;
 	changes: wiki_change[];
@@ -101,82 +103,98 @@ export const stream_recent_changes = query.live(
 				: 'Opening Wikimedia EventStreams...',
 		);
 
-		let reader: ReadableStreamDefaultReader<string> | undefined;
-		const controller = new AbortController();
+		let attempt = 0;
 
-		try {
-			const response = await fetch(event_stream, {
-				headers: {
-					accept: 'text/event-stream',
-					'api-user-agent': stream_user_agent,
-					'user-agent': stream_user_agent,
-				},
-				signal: controller.signal,
-			});
+		while (true) {
+			let reader: ReadableStreamDefaultReader<string> | undefined;
+			const controller = new AbortController();
 
-			if (!response.ok || !response.body) {
-				yield snapshot(
-					'error',
-					`Wikimedia returned ${response.status}`,
-				);
-				return;
-			}
+			try {
+				const response = await fetch(EVENT_STREAM, {
+					headers: {
+						accept: 'text/event-stream',
+						'api-user-agent': STREAM_USER_AGENT,
+						'user-agent': STREAM_USER_AGENT,
+					},
+					signal: controller.signal,
+				});
 
-			reader = response.body
-				.pipeThrough(new TextDecoderStream())
-				.getReader();
-			let buffer = '';
-			let last_yield = 0;
+				if (!response.ok || !response.body) {
+					throw new Error(`Wikimedia returned ${response.status}`);
+				}
 
-			while (true) {
-				const { value, done } = await reader.read();
-				if (done) break;
+				reader = response.body
+					.pipeThrough(new TextDecoderStream())
+					.getReader();
+				let buffer = '';
+				let last_yield = 0;
+				attempt = 0;
+				yield snapshot('live');
 
-				buffer += value;
-				const events = buffer.split(/\r?\n\r?\n/);
-				buffer = events.pop() ?? '';
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done) throw new Error('Wikimedia stream ended');
 
-				for (const event of events) {
-					const change = parse_event(event);
-					if (!change) continue;
+					buffer += value;
+					const events = buffer.split(/\r?\n\r?\n/);
+					buffer = events.pop() ?? '';
 
-					stats.total += 1;
-					stats.net_bytes += change.byte_delta;
-					if (change.bot) stats.bots += 1;
-					else stats.humans += 1;
-					if (change.type === 'edit') stats.edits += 1;
-					else if (change.type === 'new') stats.new_pages += 1;
-					else if (change.type === 'log') stats.log_events += 1;
+					for (const event of events) {
+						const change = parse_event(event);
+						if (!change) continue;
 
-					changes.unshift(change);
-					changes.splice(max_changes);
+						stats.total += 1;
+						stats.net_bytes += change.byte_delta;
+						if (change.bot) stats.bots += 1;
+						else stats.humans += 1;
+						if (change.type === 'edit') stats.edits += 1;
+						else if (change.type === 'new') stats.new_pages += 1;
+						else if (change.type === 'log') stats.log_events += 1;
 
-					const now = Date.now();
-					if (now - last_yield > min_yield_interval) {
-						last_yield = now;
-						yield snapshot('live');
+						changes.unshift(change);
+						changes.splice(MAX_CHANGES);
+
+						const now = Date.now();
+						if (now - last_yield > min_yield_interval) {
+							last_yield = now;
+							yield snapshot('live');
+						}
 					}
 				}
-			}
+			} catch (error) {
+				if (error instanceof Error && error.name === 'AbortError')
+					return;
 
-			yield snapshot('ended', 'The Wikimedia stream ended.');
-		} catch (error) {
-			if (error instanceof Error && error.name === 'AbortError')
-				return;
-			yield snapshot(
-				'error',
-				error instanceof Error ? error.message : 'Stream failed',
-			);
-		} finally {
-			controller.abort();
-			await reader?.cancel().catch(() => undefined);
+				const delay = reconnect_delay(attempt++);
+				const reason =
+					error instanceof Error ? error.message : 'Stream failed';
+				yield snapshot(
+					'reconnecting',
+					`${reason}. Reconnecting in ${Math.round(delay / 1000)}s...`,
+				);
+				await sleep(delay);
+			} finally {
+				controller.abort();
+				await reader?.cancel().catch(() => undefined);
+			}
 		}
 	},
 );
 
 function normalize_options(options: wiki_stream_options) {
 	const pace = options.pace === 'slow' ? 'slow' : 'live';
-	return { pace, min_yield_interval: pace_interval_ms[pace] };
+	return { pace, min_yield_interval: PACE_INTERVAL_MS[pace] };
+}
+
+function reconnect_delay(attempt: number) {
+	return Math.min(
+		RECONNECT_DELAY_MS * 2 ** Math.min(attempt, 4),
+		MAX_RECONNECT_DELAY_MS,
+	);
+}
+
+function sleep(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parse_event(event: string): wiki_change | null {

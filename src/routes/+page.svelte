@@ -12,6 +12,19 @@
 		running ? stream_recent_changes({ pace }) : null,
 	);
 	const snapshot = $derived(feed ? await feed : stopped_snapshot());
+	const browser_connected = $derived(feed?.connected ?? false);
+	const connection_label = $derived(
+		describe_connection(running, browser_connected, snapshot.status),
+	);
+	const connection_is_live = $derived(
+		running && browser_connected && snapshot.status === 'live',
+	);
+	const connection_is_reconnecting = $derived(
+		running &&
+			(snapshot.status === 'connecting' ||
+				snapshot.status === 'reconnecting' ||
+				!browser_connected),
+	);
 
 	const integer = new Intl.NumberFormat('en-US');
 	const signed = new Intl.NumberFormat('en-US', {
@@ -32,6 +45,20 @@
 		if (type === 'new') return 'new page';
 		if (type === 'log') return 'log';
 		return type;
+	}
+
+	function describe_connection(
+		running: boolean,
+		browser_connected: boolean,
+		status: wiki_snapshot['status'],
+	) {
+		if (!running) return 'Stopped';
+		if (status === 'connecting') return 'Connecting to Wikimedia';
+		if (!browser_connected) return 'Reconnecting browser link';
+		if (status === 'reconnecting') return 'Reconnecting Wikimedia';
+		if (status === 'live') return 'Live connection';
+		if (status === 'error') return 'Stream error';
+		return 'Stream ended';
 	}
 
 	function stopped_snapshot(): wiki_snapshot {
@@ -65,14 +92,11 @@
 <main>
 	<section class="hero" aria-labelledby="page-title">
 		<div class="eyebrow">
-			<span class:online={running && feed?.connected}></span>
-			{#if !running}
-				Stopped
-			{:else if feed?.connected}
-				Live connection
-			{:else}
-				Reconnecting
-			{/if}
+			<span
+				class:online={connection_is_live}
+				class:reconnecting={connection_is_reconnecting}
+			></span>
+			{connection_label}
 		</div>
 
 		<div class="hero-grid">
@@ -82,14 +106,21 @@
 					Wikipedia is editing itself right now.
 				</h1>
 				<p class="lede">
-					This page uses <code>query.live</code> to turn Wikimedia EventStreams
-					into a server-powered async generator. The UI updates as new edits
-					arrive.
+					This page uses
+					<a
+						href="https://svelte.dev/docs/kit/remote-functions#query.live"
+						><code>query.live</code></a
+					>
+					to turn Wikimedia EventStreams into a server-powered async generator.
+					The UI updates as new edits arrive. Source on
+					<a href="https://github.com/spences10/sveltekit-query-live"
+						>GitHub</a
+					>.
 				</p>
 			</div>
 
 			<div class="connection-card">
-				<p>{snapshot.status} · {pace}</p>
+				<p>{connection_label} · {pace}</p>
 				<strong>{integer.format(snapshot.stats.total)}</strong>
 				<span>changes seen in this session</span>
 
@@ -276,6 +307,12 @@
 			color-mix(in oklch, oklch(0.68 0.16 145) 18%, transparent);
 	}
 
+	.eyebrow span.reconnecting {
+		background: oklch(0.78 0.14 78);
+		box-shadow: 0 0 0 6px
+			color-mix(in oklch, oklch(0.78 0.14 78) 18%, transparent);
+	}
+
 	.hero-grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
@@ -308,6 +345,13 @@
 		color: oklch(0.34 0.035 55);
 		font-size: clamp(1.08rem, 2vw, 1.34rem);
 		line-height: 1.55;
+	}
+
+	.lede a {
+		color: oklch(0.45 0.14 42);
+		font-weight: 760;
+		text-decoration-thickness: 0.08em;
+		text-underline-offset: 0.16em;
 	}
 
 	code {
