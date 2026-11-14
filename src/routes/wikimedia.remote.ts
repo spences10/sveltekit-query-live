@@ -24,6 +24,7 @@ type raw_recent_change = {
 	server_url?: string;
 	wiki?: string;
 	meta?: {
+		id?: string;
 		domain?: string;
 		uri?: string;
 	};
@@ -104,6 +105,7 @@ export const stream_recent_changes = query.live(
 		);
 
 		let attempt = 0;
+		let next_event_id = 0;
 
 		while (true) {
 			let reader: ReadableStreamDefaultReader<string> | undefined;
@@ -140,8 +142,10 @@ export const stream_recent_changes = query.live(
 					buffer = events.pop() ?? '';
 
 					for (const event of events) {
-						const change = parse_event(event);
+						const change = parse_event(event, next_event_id++);
 						if (!change) continue;
+						// Replayed events must not duplicate rows or their metrics.
+						if (changes.some(({ id }) => id === change.id)) continue;
 
 						stats.total += 1;
 						stats.net_bytes += change.byte_delta;
@@ -197,7 +201,10 @@ function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parse_event(event: string): wiki_change | null {
+function parse_event(
+	event: string,
+	occurrence: number,
+): wiki_change | null {
 	const data = event
 		.split(/\r?\n/)
 		.filter((line) => line.startsWith('data:'))
@@ -207,13 +214,19 @@ function parse_event(event: string): wiki_change | null {
 	if (!data) return null;
 
 	try {
-		return to_change(JSON.parse(data) as raw_recent_change);
+		return to_change(
+			JSON.parse(data) as raw_recent_change,
+			occurrence,
+		);
 	} catch {
 		return null;
 	}
 }
 
-function to_change(raw: raw_recent_change): wiki_change {
+function to_change(
+	raw: raw_recent_change,
+	occurrence: number,
+): wiki_change {
 	const title = raw.title ?? 'Untitled page';
 	const domain = raw.meta?.domain ?? raw.wiki ?? 'wikipedia.org';
 	const server_url = raw.server_url ?? `https://${domain}`;
@@ -224,7 +237,13 @@ function to_change(raw: raw_recent_change): wiki_change {
 	const wiki = raw.wiki ?? domain.replaceAll('.', '-');
 
 	return {
-		id: `${wiki}-${raw.id ?? raw.meta?.uri ?? title}-${timestamp}`,
+		// A page URI and second-resolution timestamp do not identify an event.
+		// Keep anonymous occurrences distinct rather than discarding real changes.
+		id: raw.meta?.id
+			? `event-${raw.meta.id}`
+			: raw.id != null
+				? `change-${wiki}-${raw.id}`
+				: `occurrence-${occurrence}`,
 		type: raw.type ?? 'change',
 		title,
 		comment: raw.comment ?? 'No edit summary provided',

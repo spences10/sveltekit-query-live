@@ -1,10 +1,51 @@
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vitest/config';
-import { playwright } from '@vitest/browser-playwright';
+import { defineConfig } from 'vite-plus';
+import adapter from '@sveltejs/adapter-cloudflare';
+import { playwright } from 'vite-plus/test/browser-playwright';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [
+		tailwindcss(),
+		sveltekit({
+			adapter: adapter(),
+			compilerOptions: {
+				experimental: { async: true },
+				runes: ({ filename }) =>
+					filename?.split(/[/\\\\]/).includes('node_modules')
+						? undefined
+						: true,
+			},
+			experimental: { remoteFunctions: true },
+		}),
+	],
+	fmt: {
+		useTabs: true,
+		singleQuote: true,
+		printWidth: 70,
+		trailingComma: 'all',
+		proseWrap: 'always',
+		svelte: true,
+		sortTailwindcss: { stylesheet: './src/routes/layout.css' },
+		ignorePatterns: [
+			'.svelte-kit/**',
+			'.wrangler/**',
+			'worker-configuration.d.ts',
+			'static/**',
+			'pnpm-lock.yaml',
+			'test-results/**',
+			'playwright-report/**',
+		],
+	},
+	lint: {
+		ignorePatterns: [
+			'.svelte-kit/**',
+			'.wrangler/**',
+			'worker-configuration.d.ts',
+			'test-results/**',
+			'playwright-report/**',
+		],
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
