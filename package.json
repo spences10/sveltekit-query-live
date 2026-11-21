@@ -10,7 +10,7 @@
 		"dev": "vp dev",
 		"clean:worker-types": "node -e \"const fs = require('node:fs'); for (const p of ['.svelte-kit/cloudflare', '.svelte-kit/cloudflare-tmp']) fs.rmSync(p, { recursive: true, force: true })\"",
 		"build": "pnpm run clean:worker-types && wrangler types --check && vp build",
-		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
+		"preview": "vp preview --port 4173",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "pnpm run clean:worker-types && wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -23,7 +23,7 @@
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.59.1",
-		"@sveltejs/adapter-cloudflare": "8.0.3",
+		"@sveltejs/adapter-cloudflare": "9.0.0",
 		"@sveltejs/kit": "3.4.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@tailwindcss/vite": "^4.2.4",
